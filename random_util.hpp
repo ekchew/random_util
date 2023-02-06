@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <exception>
 #include <limits>
 #include <random>
 #include <type_traits>
@@ -33,6 +34,12 @@
  *  std::random_device as a source with the appropriate flag:
  *
  *      SeedSource::Seq seq{SeedSource::kRandomDevice};
+ *
+ *  Update:
+ *      It is possible for an unimplemented std::random_device to throw a
+ *      std::exception. If this occurs when no other seed source is selected,
+ *      the two clocks will be activated instead. If one or both of the clocks
+ *      IS selected, the random_device exception will simply be ignored.
  */
 
 namespace SeedSource {
@@ -131,14 +138,19 @@ namespace SeedSource {
         //---- Constructors ---------------------------------------------------
 
         constexpr Seq(Flags flags = kAll) noexcept: flags{flags} {}
-        template<typename It, typename EndIt> constexpr
-            Seq(It it, EndIt endIt) {
+        template<typename InputIt> constexpr
+            Seq(InputIt it, InputIt endIt,
+                std::enable_if_t<not std::is_integral_v<InputIt>>* p = nullptr
+                )
+            {
                 for(this->flags = 0x00000000; it != endIt; ++it) {
                     this->flags |= *it;
                 }
             }
-        template<typename T> constexpr
-            Seq(std::initializer_list<T> il):
+        template<typename Int> constexpr
+            Seq(std::initializer_list<Int> il,
+                std::enable_if_t<std::is_integral_v<Int>>* p = nullptr
+                ):
                 Seq{il.begin(), il.end()} {}
 
         /*---- generate method ------------------------------------------------
@@ -198,9 +210,18 @@ namespace SeedSource {
 
                 //  Write std::random_device output directly over the iterator
                 //  range if kRandomDevice is the only source selected.
+                //  If this fails on an exception, fall back on the 2 clocks
+                //  to generate the sequence.
                 Flags f = this->flags & kAll;
                 if(f == kRandomDevice) {
-                    randDevGen([](auto it, result_type v) { *it = v; });
+                    try {
+                        randDevGen([](auto it, result_type v) { *it = v; });
+                    }
+                    catch(std::exception&) {
+                        Seq{kSystemClock, kSteadyClock}.generate(
+                            bgnIt, endIt
+                            );
+                    }
                 }
 
                 else {
@@ -227,9 +248,17 @@ namespace SeedSource {
                     }
 
                     //  Run a second pass over the iterator range if warranted
-                    //  to XOR std::random_device output.
+                    //  to XOR std::random_device output. An exception
+                    //  occurring at this point (presumably due to an
+                    //  unimplemented random_device) can be ignored since the
+                    //  clocks have already produced a seed sequence.
                     if(f & kRandomDevice) {
-                        randDevGen([](auto it, result_type v) { *it ^= v; });
+                        try {
+                            randDevGen(
+                                [](auto it, result_type v) { *it ^= v; }
+                                );
+                        }
+                        catch(std::exception&) {}
                     }
                 }
             }
