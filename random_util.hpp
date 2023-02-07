@@ -190,10 +190,9 @@ namespace SeedSource {
                 //  std::chrono clock's now() method and outputs it as 2
                 //  32-bit integers to an array iterator.
                 auto extractTime = [](auto timePt, auto& arrIt) {
-                    auto dur = timePt.time_since_epoch();
-                    auto ns = duration_cast<nanoseconds>(dur).count();
-                    *arrIt++ = static_cast<result_type>(ns >> 32);
-                    *arrIt++ = static_cast<result_type>(ns);
+                    auto cnt = timePt.time_since_epoch().count();
+                    *arrIt++ = static_cast<result_type>(cnt >> 32);
+                    *arrIt++ = static_cast<result_type>(cnt);
                 };
 
                 //  Write std::random_device output directly over the iterator
