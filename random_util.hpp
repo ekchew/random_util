@@ -1,3 +1,4 @@
+#pragma once
 #ifndef RANDOM_UTIL_HPP
 #define RANDOM_UTIL_HPP
 
